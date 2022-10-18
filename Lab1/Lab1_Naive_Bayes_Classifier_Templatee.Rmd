@@ -1,0 +1,335 @@
+---
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Probability and Statistics
+
+# Lab Assignment 1: Naive Bayes Classifier
+
+### *Dmytro Batko, Yelyzaveta Zarichanska, Mykyta Ishchenko*
+
+## Introduction
+
+During the past three weeks, you learned a couple of essential notions
+and theorems, and one of the most important among them is the *Bayes
+theorem*.
+
+One of its applications is **Naive Bayes classifier**, which is a
+probabilistic classifier whose aim is to determine which class some
+observation probably belongs to by using the Bayes formula:
+$$\mathsf{P}(\mathrm{class}\mid \mathrm{observation})=\frac{\mathsf{P}(\mathrm{observation}\mid\mathrm{class})\mathsf{P}(\mathrm{class})}{\mathsf{P}(\mathrm{observation})}$$
+
+Under the strong independence assumption, one can calculate
+$\mathsf{P}(\mathrm{observation} \mid \mathrm{class})$ as
+$$\mathsf{P}(\mathrm{observation}) = \prod_{i=1}^{n} \mathsf{P}(\mathrm{feature}_i), \qquad \mathsf{P}(\mathrm{observation} \mid \mathrm{class}) = \prod_{i=1}^{n} \mathsf{P}(\mathrm{feature}_i \mid \mathrm{class}),$$
+where $n$ is the total number of features describing a given
+observation. Thus, $\mathsf{P}(\mathrm{class}|\mathrm{observation})$ now
+can be calculated as
+
+$$\mathsf{P}(\mathrm{class} \mid \mathrm{\mathrm{observation}}) = \mathsf{P}(\mathrm{class})\times \prod_{i=1}^{n}\frac{\mathsf{P}(\mathrm{feature}_i\mid \mathrm{class})}{\mathsf{P}(\mathrm{feature}_i)}\tag{1}$$
+
+All the terms on the right-hand side can be estimated from the data as
+respective relative frequencies;\
+see [this
+site](https://monkeylearn.com/blog/practical-explanation-naive-bayes-classifier/)
+for more detailed explanations.
+
+## Data description
+
+There are 5 datasets uploaded on the cms.
+
+To determine your variant, take your team number from the list of teams
+on cms and take *mod 5* - this is the number of your data set.
+
+-   **0 - authors** This data set consists of citations of three famous
+    writers: Edgar Alan Poe, Mary Wollstonecraft Shelley and HP
+    Lovecraft. The task with this data set is to classify a piece of
+    text with the author who was more likely to write it.
+
+-   **1 - discrimination** This data set consists of tweets that have
+    discriminatory (sexism or racism) messages or of tweets that are of
+    neutral mood. The task is to determine whether a given tweet has
+    discriminatory mood or does not.
+
+-   **2 - fake news** This data set contains data of American news: a
+    headline and an abstract of the article. Each piece of news is
+    classified as fake or credible. The task is to classify the news
+    from test.csv as credible or fake.
+
+-   **3 - sentiment** All the text messages contained in this data set
+    are labeled with three sentiments: positive, neutral or negative.
+    The task is to classify some text message as the one of positive
+    mood, negative or neutral.
+
+-   **4 - spam** This last data set contains SMS messages classified as
+    spam or non-spam (ham in the data set). The task is to determine
+    whether a given message is spam or non-spam.
+
+Each data set consists of two files: *train.csv* and *test.csv*. The
+first one you will need find the probabilities distributions for each of
+the features, while the second one is needed for checking how well your
+classifier works.
+
+```{r}
+# here goes a list of recommended libraries,
+# though you may install other ones if they are needed
+library(tidytext)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(tm)
+library(stringr)
+library(wordcloud)
+```
+
+## Instructions
+
+-   The first step is data pre-processing, which includes removing
+    punctuation marks and stop words
+
+-   represent each message as a bag-of-words
+
+-   using the training set, calculate all the conditional probabilities
+    in formula (1)
+
+-   use those to predict classes for messages in the test set
+
+-   evaluate effectiveness of the classifier by calculating the
+    corresponding metrics
+
+-   shortly summarize your work
+
+-   do not forget to submit both the (compiled) Rmd source file and the .html
+    output
+    
+### Data pre-processing
+
+- Read the *.csv* data files.
+- Сlear your data from punctuation or other unneeded symbols.
+- Clear you data from stop words. You don't want words as is, and, or
+    etc. to affect your probabilities distributions, so it is a wise
+    decision to get rid of them. Find list of stop words in the cms
+    under the lab task.
+- Represent each test message as its bag-of-words. Here:
+    <https://machinelearningmastery.com/gentle-introduction-bag-words-model/>
+    you can find general introduction to the bag-of-words model and
+    examples on to create it.
+- It is highly recommended to get familiar with R dataframes, it would
+    make the work much easier to do.
+- Useful links:
+    -   <https://steviep42.github.io/webscraping/book/bagofwords.html#tidytext> -
+        example of using *tidytext* to count frequencies of the words.
+    -   Basics of Text Mining in R:
+        <http://rstudio-pubs-static.s3.amazonaws.com/256588_57b585da6c054349825cba46685d8464.html>
+        . Note that it also includes an example on how to create a bag
+        of words from your text document.
+
+```{r}
+test_path <- "data/1-discrimination/test.csv"
+train_path <- "data/1-discrimination/train.csv"
+
+stop_words <- read_file("stop_words.txt")
+# https://stackoverflow.com/questions/27195912/why-does-strsplit-return-a-list
+splitted_stop_words <- strsplit(stop_words, split='\n')
+splitted_stop_words <- splitted_stop_words[[1]]
+
+train <- read.csv(file = train_path)
+test <- read.csv(file = test_path, stringsAsFactors = FALSE)
+```
+
+### Data visualization
+
+Each time you work with some data, you need to understand it before you
+start processing it. R has very powerful tools to make nice plots and
+visualization. Show what are the most common words for negative and
+positive examples as a histogram, word cloud etc. Be creative!
+
+## Classifier implementation
+
+```{r}
+naiveBayes <- setRefClass("naiveBayes",
+                          
+       # here it would be wise to have some vars to store intermediate result
+       # frequency dict etc. Though pay attention to bag of wards! 
+       fields = list(
+         text = "data.frame",
+         dataframe_with_gen_freq = "data.frame",
+         for_neutral = "data.frame",
+         tidy_text_neutral = "data.frame",
+         for_discrim = "data.frame",
+         tidy_text_discrim = "data.frame",
+         sum_of_elements_neutral = "double",
+         sum_of_elements_discrim = "double",
+         sum_of_elem_without_rep = "double"
+       ),
+       methods = list(
+                    # prepare your training data as X - bag of words for each of your
+                    # messages and corresponding label for the message encoded as 0 or 1 
+                    # (binary classification task)
+                    fit = function()
+                    {
+                        text <<- data.frame(label = train$label, tweet = train$tweet)
+
+                        text <<- mutate(text, tweet = gsub(x = tweet, pattern = "user|[0-9]+|[[:punct:]]|â|ð", replacement = ""))
+                        
+                        tidy_text <- unnest_tokens(text, 'splitted', 'tweet', token="words") %>%
+                                     filter(!splitted %in% splitted_stop_words)
+                        dataframe_with_gen_freq <<- tidy_text %>% count(splitted, sort = "True")
+                        #cloud of words
+                        wordcloud(words = dataframe_with_gen_freq$splitted, freq = dataframe_with_gen_freq$n, min.freq = 1, max.words=50, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+                        
+                        for_neutral <<- filter(text, label=="neutral")
+                        tidy_text_neutral <<- unnest_tokens(for_neutral, 'splitted', 'tweet', token="words") %>%
+                                     filter(!splitted %in% splitted_stop_words)
+                        tidy_text_neutral <<- tidy_text_neutral %>% count(splitted, sort = "True")
+                        #cloud of words
+                        wordcloud(words = tidy_text_neutral$splitted, freq = tidy_text_neutral$n, min.freq = 1, max.words=550, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+                        
+                        for_discrim <<- filter(text, label=="discrim")
+                        tidy_text_discrim <<- unnest_tokens(for_discrim, 'splitted', 'tweet', token="words") %>%
+                                     filter(!splitted %in% splitted_stop_words)
+                        tidy_text_discrim <<- tidy_text_discrim %>% count(splitted, sort = "True")
+                        #cloud of words
+                        wordcloud(words = tidy_text_discrim$splitted, freq = tidy_text_discrim$n, min.freq = 1, max.words=550, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+                    },
+
+                    count_predict = function()
+                    {
+                      sum_of_elements_neutral <<- sum(tidy_text_neutral$n)
+                      sum_of_elements_discrim <<- sum(tidy_text_discrim$n)
+                      sum_of_elem_without_rep <<- nrow(dataframe_with_gen_freq)
+
+                      new_column1 <- c()
+                      for(i in 1:nrow(tidy_text_neutral)) {
+                          new_column1 <- append(new_column1, (tidy_text_neutral[i, 2]+1)/(sum_of_elements_neutral+sum_of_elem_without_rep))
+                      }
+                      tidy_text_neutral$probability <<- new_column1
+
+                      new_column2 <- c()
+                      for(i in 1:nrow(tidy_text_discrim)) {
+                          new_column2 <- append(new_column2, (tidy_text_discrim[i, 2]+1)/(sum_of_elements_discrim+sum_of_elem_without_rep))
+                      }
+                      tidy_text_discrim$probability <<- new_column2
+                    },
+                    
+                    # return prediction for a single message 
+                    predict = function(message)
+                    {
+                        message <- gsub('user|[0-9]+|[[:punct:]]|â|ð', '', message)
+                        splitting <- strsplit(message, split = " ")[[1]]
+                        probability1 <- c()
+                        probability2 <- c()
+                        
+                        for(i in splitting) {
+                          if (i %in% tidy_text_neutral$splitted) {
+                            probability1 <- append(probability1, filter(tidy_text_neutral, splitted==i)[, 3])
+                          } else {
+                            probability1 <- append(probability1, (0+1)/(sum_of_elements_neutral+sum_of_elem_without_rep))
+                          }
+                        }
+                        product1 <- 1
+                        for (i in probability1) {
+                          product1 <- product1 * i
+                        }
+                        product_neutral <- product1*(nrow(for_neutral)/nrow(text))
+                        
+                        for(i in splitting) { 
+                          if (i %in% tidy_text_discrim$splitted) {
+                            probability2 <- append(probability2, filter(tidy_text_discrim, splitted==i)[, 3])
+                          } else {
+                            probability2 <- append(probability2, (0+1)/(sum_of_elements_discrim+sum_of_elem_without_rep))
+                          }
+                        }
+                        product2 <- 1
+                        for (i in probability2) {
+                          product2 <- product2 * i
+                        }
+
+                        product_discrim <- product2*(nrow(for_discrim)/nrow(text))
+
+                        if (product_neutral > product_discrim) {
+                          return ("neutral")
+                        } else {
+                          return ("discrim")
+                        }
+                    },
+                    
+                    # score you test set so to get the understanding how well you model
+                    # works.
+                    # look at f1 score or precision and recall
+                    # visualize them 
+                    # try how well your model generalizes to real world data! 
+                    score = function()
+                    {
+                      counter_wrong <- 0
+                      counter_right <- 0
+                      tests <- data.frame(label = test$label, tweet = test$tweet)
+
+                      for(i in seq_len(nrow(tests))) {
+                          label_from_csv <- tests[i, ]$label[[1]]
+                          label_predicted <- model$predict(tests[i, ]$tweet[[1]])
+
+                          if (label_from_csv == label_predicted) {
+                            counter_right <- counter_right + 1
+                          } else {
+                            counter_wrong <- counter_wrong + 1
+                          }
+                      }
+                      accuracy_ <- counter_right/(counter_right+counter_wrong)
+                      datum_of_rw <- data.frame (Determined  = c(counter_wrong, counter_right),
+                              Deter = c("Wrongly", "Correctly")
+                              )
+                      barplot(datum_of_rw$Determined, las = 2, names.arg = datum_of_rw$Deter,
+                                col ="lightblue", main ="Сorrelation between wrongly and correctly predicted tweets",
+                                ylab = "Number of wrongly or correctly predicted tweets", width = 1)
+                      slices <- c(counter_wrong, counter_right)
+                      lbls <- c("Wrongly predicted", "Correctly predicted")
+                      pie(slices, labels = lbls, main="Pie Chart of Tweets")
+                      return (accuracy_)
+                    }
+))
+
+model = naiveBayes()
+model$fit()
+model$count_predict()
+model$score()
+```
+
+## Measure effectiveness of your classifier
+-   Note that accuracy is not always a good metric for your classifier.
+    Look at precision and recall curves, F1 score metric.
+-   Visualize them.
+-   Show failure cases.
+
+## Conclusions:
+- Describe the method implemented in general:
+  First we process data and clear it from unnecessary characters and words.
+  Then we calculate all necessary variables from the training set in the "fit"
+  method, and after that use the Baye's Formula with Laplace
+  Smoothing to predict whether sentance is discriminatory or not.
+
+## List pros and cons of the method:
+  ### Pros:
+
+  The model score is not pretty high? but it guessed 47% of the results correctly.
+
+  Other pros include less training time and less training data needed for the model to function properly.
+
+  ### Cons:
+  The biggest con of this model is that we don't take into account the ordering of words in a sentence, which can effect the result.
+  The tweets is not such a good date to predict because in most cases some words from tweets is not found and it influence the       probability.
+
+## Add a few sencences about your implementation of the classifier:
+
+  We determine if a sentence is discriminatory or not by comparing the probability of it being discriminatory and it being neutral in the predict method.
+  
+  We used Laplace Smoothing in the predict_prob method, because if there is a word in a sentence which doesn't appear in the training set the probability of a sentence being discriminatory or neutral would be zero, and smoothing solves this problem.
+  
+## Describe your results:
+  As the result, we wrote a working model for determining discriminatory sentences based on the dataset of more than 20000 tweets with a score of 47%.
